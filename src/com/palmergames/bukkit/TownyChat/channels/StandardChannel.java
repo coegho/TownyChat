@@ -47,12 +47,16 @@ public class StandardChannel extends Channel {
 		Resident resident = null;
 		Town town = null;
 		Nation nation = null;
+		List<Nation> coalition = null;
 		String Format = "";
 		
 		try {
 			resident = TownyUniverse.getDataSource().getResident(player.getName());
 			town = resident.getTown();
 			nation = resident.getTown().getNation();
+			coalition = nation.getAllies();
+			coalition.add(nation);
+
 		} catch (NotRegisteredException e1) {
 			// Not in a town/nation (doesn't matter which)
 		}
@@ -108,8 +112,8 @@ public class StandardChannel extends Channel {
 		 }
 
 		/*
-		 *  Retrieve the channel specific format
-		 *  and compile a set of recipients
+		 *	Retrieve the channel specific format
+		 *	and compile a set of recipients
 		 */
 		switch (exec) {
 		
@@ -130,6 +134,20 @@ public class StandardChannel extends Channel {
 			}
 			Format = ChatSettings.getRelevantFormatGroup(player).getNATION();
 			recipients = new HashSet<Player>(findRecipients(player, TownyUniverse.getOnlinePlayers(nation), volume));
+			recipients = checkSpying(recipients);
+			break;
+		
+		case COALITION:
+			if (coalition == null) {
+				event.setCancelled(true);
+				return;
+			}
+			Format = ChatSettings.getRelevantFormatGroup(player).getCOALITION();
+			//recipients = new HashSet<Player>(findRecipients(player, TownyUniverse.getOnlinePlayers(coalition)));
+			recipients = new HashSet<Player>();
+			for(Nation ally : coalition) {
+				recipients.addAll(findRecipients(player, TownyUniverse.getOnlinePlayers(ally), volume));
+			}
 			recipients = checkSpying(recipients);
 			break;
 			
@@ -161,37 +179,37 @@ public class StandardChannel extends Channel {
 		event.setFormat(TownyChatFormatter.getChatFormat(chatEvent));
 		
 		/*
-		 *  Set all the listeners for Bukkit to send this message to.
+		 *	Set all the listeners for Bukkit to send this message to.
 		 */
-        event.getRecipients().clear();
-        event.getRecipients().addAll(recipients);
-        
-        if (isHooked()) {
-        	AsyncChatHookEvent hookEvent = new AsyncChatHookEvent(event, this);
-            Bukkit.getServer().getPluginManager().callEvent(hookEvent);
-            if (hookEvent.isCancelled()) {
-            	event.setCancelled(true);
-            	return;
-            }
-            if (hookEvent.isChanged()) {
-            	event.setMessage(hookEvent.getMessage());
-            	event.setFormat(hookEvent.getFormat());
-                event.getRecipients().clear();
-                event.getRecipients().addAll(hookEvent.getRecipients());
-            }
-        }
+				event.getRecipients().clear();
+				event.getRecipients().addAll(recipients);
+				
+				if (isHooked()) {
+					AsyncChatHookEvent hookEvent = new AsyncChatHookEvent(event, this);
+						Bukkit.getServer().getPluginManager().callEvent(hookEvent);
+						if (hookEvent.isCancelled()) {
+							event.setCancelled(true);
+							return;
+						}
+						if (hookEvent.isChanged()) {
+							event.setMessage(hookEvent.getMessage());
+							event.setFormat(hookEvent.getFormat());
+								event.getRecipients().clear();
+								event.getRecipients().addAll(hookEvent.getRecipients());
+						}
+				}
 
-        if (notifyjoin) {
+				if (notifyjoin) {
 			TownyMessaging.sendMsg(player, "You join " + Colors.White + getName());
-        }
+				}
 
-        /*
-         * Perform any last channel specific functions
-         * like logging this chat and relaying to IRC/Dynmap.
-         */
-        String msg = event.getFormat().replace("%1$s", event.getPlayer().getDisplayName()).replace("%2$s", event.getMessage());
-        
-        switch (exec) {
+				/*
+				 * Perform any last channel specific functions
+				 * like logging this chat and relaying to IRC/Dynmap.
+				 */
+				String msg = event.getFormat().replace("%1$s", event.getPlayer().getDisplayName()).replace("%2$s", event.getMessage());
+				
+				switch (exec) {
 		
 		case TOWN:
 			//plugin.getLogger().info(ChatTools.stripColour("[Town Msg] " + town.getName() + ": " + msg));
@@ -200,7 +218,11 @@ public class StandardChannel extends Channel {
 		case NATION:
 			//plugin.getLogger().info(ChatTools.stripColour("[Nation Msg] " + nation.getName() + ": " + msg));
 			break;
-			
+		
+		case COALITION:
+			//plugin.getLogger().info(ChatTools.stripColour("[Coalition Msg] " + nation.getName() + ": " + msg));
+			break;
+		
 		case DEFAULT:
 			break;
 			
@@ -212,11 +234,11 @@ public class StandardChannel extends Channel {
 				dynMap.postPlayerMessageToWeb(player, event.getMessage());
 			break;
 		}
-        
-        // Relay to IRC
-        CraftIRCHandler ircHander = plugin.getIRC();
-        if (ircHander != null)
-        	ircHander.IRCSender(msg, getCraftIRCTag());
+				
+				// Relay to IRC
+				CraftIRCHandler ircHander = plugin.getIRC();
+				if (ircHander != null)
+					ircHander.IRCSender(msg, getCraftIRCTag());
 		
 	}
 
@@ -288,7 +310,7 @@ public class StandardChannel extends Channel {
 						try {
 							User targetUser = plugin.getTowny().getEssentials().getUser(test);
 							/*
-							 *  Don't send this message if the user is ignored
+							 *	Don't send this message if the user is ignored
 							 */
 							if (targetUser.isIgnoredPlayer(sendersName))
 								continue;
@@ -297,22 +319,22 @@ public class StandardChannel extends Channel {
 						}
 					}
 
-	        		// Spy's can leave channels and we'll respect that
-	        		if (absentPlayers != null) {
-	        			// Ignore players who have left this channel
-	        			if (absentPlayers.containsKey(test.getName())) {
-	        				continue;
-	        			}
-	        		}
-	        		recipients.add(test);
-	        	}
-        	}
-        }
-        
-        //if (recipients.size() <= 1)
-        //	sender.sendMessage(TownySettings.parseSingleLineString("&cYou feel so lonely."));
-        
-        return recipients;
+							// Spy's can leave channels and we'll respect that
+							if (absentPlayers != null) {
+								// Ignore players who have left this channel
+								if (absentPlayers.containsKey(test.getName())) {
+									continue;
+								}
+							}
+							recipients.add(test);
+						}
+					}
+				}
+				
+				//if (recipients.size() <= 1)
+				//	sender.sendMessage(TownySettings.parseSingleLineString("&cYou feel so lonely."));
+				
+				return recipients;
 	}
 	
 	/**
@@ -326,13 +348,13 @@ public class StandardChannel extends Channel {
 		List<Player> allOnline = new ArrayList<Player>(Arrays.asList(BukkitTools.getOnlinePlayers()));
 		
 		// Compile the list of recipients with spy perms
-        for (Player test : allOnline) {
-        	
-        	if ((plugin.getTowny().hasPlayerMode(test, "spy")) && !(recipients.contains(test))) {
-        		recipients.add(test);
-        	}
+				for (Player test : allOnline) {
+					
+					if ((plugin.getTowny().hasPlayerMode(test, "spy")) && !(recipients.contains(test))) {
+						recipients.add(test);
+					}
 
-        }
+				}
 		
 		return recipients;
 	}
