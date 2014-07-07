@@ -1,5 +1,6 @@
 package com.palmergames.bukkit.TownyChat.channels;
 
+import java.lang.Math;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -68,6 +69,48 @@ public class StandardChannel extends Channel {
 			notifyjoin = true;
 		}
 
+
+		/*
+		 *  Detect message's volume
+		 */
+		 
+		 int volume = 1;
+		 if(getRange() > 0) {	//local chat only
+			 String msg = event.getMessage();
+			 int hungerLimit = 0;
+			 int hungerCost = 0;
+			 int i = 0;
+			 hungerLimit = player.getFoodLevel();
+			 switch(msg.charAt(0)) {
+			 
+			 	case '!':	//TODO: shout character from config
+			 		hungerCost = 1;
+			 		i++;
+			 		while(msg.charAt(i) == '!') {
+			 			i++;
+			 			hungerCost = hungerCost*2;
+			 		}
+			 		if(hungerCost > hungerLimit) {	//not enough food level
+			 			event.setCancelled(true);
+			 			//	sender.sendMessage(TownySettings.parseSingleLineString("&cYou have not enough energies to shout!"));
+			 		}
+			 		else {
+			 			player.setFoodLevel(hungerLimit - hungerCost);
+			 			volume = hungerCost*2;
+			 		}
+			 		break;
+			 		
+		 		case '$':	//TODO: whisper character from config
+		 			volume = -1;
+		 			do {
+			 			i++;
+			 			volume = volume*2;
+		 			}while(msg.charAt(i) == '$');
+		 			break;
+			 }
+			 
+		 }
+
 		/*
 		 *	Retrieve the channel specific format
 		 *	and compile a set of recipients
@@ -80,7 +123,7 @@ public class StandardChannel extends Channel {
 				return;
 			}
 			Format = ChatSettings.getRelevantFormatGroup(player).getTOWN();
-			recipients = new HashSet<Player>(findRecipients(player, TownyUniverse.getOnlinePlayers(town)));
+			recipients = new HashSet<Player>(findRecipients(player, TownyUniverse.getOnlinePlayers(town), volume));
 			recipients = checkSpying(recipients);
 			break;
 		
@@ -90,7 +133,7 @@ public class StandardChannel extends Channel {
 				return;
 			}
 			Format = ChatSettings.getRelevantFormatGroup(player).getNATION();
-			recipients = new HashSet<Player>(findRecipients(player, TownyUniverse.getOnlinePlayers(nation)));
+			recipients = new HashSet<Player>(findRecipients(player, TownyUniverse.getOnlinePlayers(nation), volume));
 			recipients = checkSpying(recipients);
 			break;
 		
@@ -103,24 +146,24 @@ public class StandardChannel extends Channel {
 			//recipients = new HashSet<Player>(findRecipients(player, TownyUniverse.getOnlinePlayers(coalition)));
 			recipients = new HashSet<Player>();
 			for(Nation ally : coalition) {
-				recipients.addAll(findRecipients(player, TownyUniverse.getOnlinePlayers(ally)));
+				recipients.addAll(findRecipients(player, TownyUniverse.getOnlinePlayers(ally), volume));
 			}
 			recipients = checkSpying(recipients);
 			break;
 			
 		case DEFAULT:
 			Format = ChatSettings.getRelevantFormatGroup(player).getDEFAULT();
-			recipients = new HashSet<Player>(findRecipients(player, new ArrayList<Player>(Arrays.asList(BukkitTools.getOnlinePlayers()))));
+			recipients = new HashSet<Player>(findRecipients(player, new ArrayList<Player>(Arrays.asList(BukkitTools.getOnlinePlayers())), volume));
 			break;
 			
 		case GLOBAL:
 			Format = ChatSettings.getRelevantFormatGroup(player).getGLOBAL();
-			recipients = new HashSet<Player>(findRecipients(player, new ArrayList<Player>(Arrays.asList(BukkitTools.getOnlinePlayers()))));
+			recipients = new HashSet<Player>(findRecipients(player, new ArrayList<Player>(Arrays.asList(BukkitTools.getOnlinePlayers())), volume));
 			break;
 			
 		case PRIVATE:
 			Format = ChatSettings.getRelevantFormatGroup(player).getGLOBAL();
-			recipients = new HashSet<Player>(findRecipients(player, new ArrayList<Player>(Arrays.asList(BukkitTools.getOnlinePlayers()))));
+			recipients = new HashSet<Player>(findRecipients(player, new ArrayList<Player>(Arrays.asList(BukkitTools.getOnlinePlayers())), volume));
 			break;
 		}
 		
@@ -232,29 +275,38 @@ public class StandardChannel extends Channel {
 	 * 
 	 * @param sender
 	 * @param list
+	 * @param volume
 	 * @return Set containing a list of players for this message.
 	 */
-	private Set<Player> findRecipients(Player sender, List<Player> list) {
+	private Set<Player> findRecipients(Player sender, List<Player> list, int volume) {
 		
 		Set<Player> recipients = new HashSet<Player>();
 		Boolean bEssentials = plugin.getTowny().isEssentials();
 		String sendersName = sender.getName();
 		
+		double modRange = getRange();
+		if(volume > 0) {
+			modRange = modRange * volume;
+		}
+		if(volume < 0) {
+			modRange = modRange / (-volume);
+		}
+		
 		// Compile the list of recipients
-				for (Player test : list) {
-					
-					/*
-					 * If Not using permissions, or the player has the correct permission node.
-					 */
-					if (!plugin.getTowny().isPermissions() || (plugin.getTowny().isPermissions() && TownyUniverse.getPermissionSource().has(test, getPermission()))) {
-						
-						/*
-						 * If the player is within range for this channel
-						 * or the recipient has the spy mode.
-						 */
-						if ((testDistance(sender, test, getRange())) || (plugin.getTowny().hasPlayerMode(test, "spy"))) {
-							
-							if (bEssentials) {
+        for (Player test : list) {
+        	
+        	/*
+        	 * If Not using permissions, or the player has the correct permission node.
+        	 */
+        	if (!plugin.getTowny().isPermissions() || (plugin.getTowny().isPermissions() && TownyUniverse.getPermissionSource().has(test, getPermission()))) {
+        		
+        		/*
+        		 * If the player is within range for this channel
+        		 * or the recipient has the spy mode.
+        		 */
+	        	if ((testDistance(sender, test, modRange)) || (plugin.getTowny().hasPlayerMode(test, "spy"))) {
+	        		
+	        		if (bEssentials) {
 						try {
 							User targetUser = plugin.getTowny().getEssentials().getUser(test);
 							/*
